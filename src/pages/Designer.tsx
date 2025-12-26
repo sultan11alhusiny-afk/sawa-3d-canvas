@@ -1,7 +1,7 @@
 import { Suspense, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Environment, Float, Text3D, Center } from "@react-three/drei";
+import { OrbitControls, Environment, Float, Text, Center } from "@react-three/drei";
 import { motion } from "framer-motion";
 import * as THREE from "three";
 import { Layout } from "@/components/layout/Layout";
@@ -147,15 +147,15 @@ const Garment = ({ color, text, textColor, type }: GarmentProps) => {
         {/* Custom Text */}
         {text && (
           <Center position={[0, 0, 0.45]}>
-            <Text3D
-              font="/fonts/helvetiker_regular.typeface.json"
-              size={0.2}
-              height={0.05}
-              curveSegments={12}
+            <Text
+              fontSize={0.25}
+              color={textColor}
+              anchorX="center"
+              anchorY="middle"
+              font="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
             >
               {text}
-              <meshStandardMaterial color={textColor} />
-            </Text3D>
+            </Text>
           </Center>
         )}
       </group>
