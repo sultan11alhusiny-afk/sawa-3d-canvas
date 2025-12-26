@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Upload, X, RotateCw, Maximize2, Move, Target } from "lucide-react";
+import DOMPurify from "dompurify";
 
 interface DecalSettings {
   positionX: number;
@@ -19,6 +20,26 @@ interface ImageUploadPanelProps {
   onSettingsChange: (settings: Partial<DecalSettings>) => void;
 }
 
+// Sanitize SVG content to remove any malicious scripts
+const sanitizeSvg = async (file: File): Promise<Blob> => {
+  const text = await file.text();
+  
+  // Configure DOMPurify to allow SVG elements but strip all scripts and event handlers
+  const clean = DOMPurify.sanitize(text, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['use'],
+    FORBID_TAGS: ['script', 'foreignObject'],
+    FORBID_ATTR: [
+      'onload', 'onerror', 'onclick', 'onmouseover', 'onmouseout', 
+      'onfocus', 'onblur', 'onchange', 'oninput', 'onkeydown', 
+      'onkeyup', 'onkeypress', 'onsubmit', 'onreset', 'onselect',
+      'onabort', 'onanimationend', 'onanimationiteration', 'onanimationstart'
+    ],
+  });
+  
+  return new Blob([clean], { type: 'image/svg+xml' });
+};
+
 export const ImageUploadPanel = ({
   uploadedImage,
   onImageUpload,
@@ -29,8 +50,9 @@ export const ImageUploadPanel = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const positionGridRef = useRef<HTMLDivElement>(null);
   const [isDraggingOnGrid, setIsDraggingOnGrid] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -45,8 +67,24 @@ export const ImageUploadPanel = ({
       return;
     }
 
-    const imageUrl = URL.createObjectURL(file);
-    onImageUpload(imageUrl);
+    setIsProcessing(true);
+    
+    try {
+      let fileToUse: File | Blob = file;
+      
+      // Sanitize SVG files to prevent XSS attacks
+      if (file.type === "image/svg+xml") {
+        fileToUse = await sanitizeSvg(file);
+      }
+      
+      const imageUrl = URL.createObjectURL(fileToUse);
+      onImageUpload(imageUrl);
+    } catch (error) {
+      console.error("Error processing image:", error);
+      alert("Error processing image. Please try another file.");
+    } finally {
+      setIsProcessing(false);
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -115,13 +153,14 @@ export const ImageUploadPanel = ({
         {!uploadedImage ? (
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-video rounded-xl border-2 border-dashed border-border hover:border-gold/50 transition-all flex flex-col items-center justify-center gap-3 bg-secondary/50"
+            disabled={isProcessing}
+            className="w-full aspect-video rounded-xl border-2 border-dashed border-border hover:border-gold/50 transition-all flex flex-col items-center justify-center gap-3 bg-secondary/50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="w-12 h-12 rounded-full bg-gold/10 flex items-center justify-center">
-              <Upload className="w-6 h-6 text-gold" />
+              <Upload className={`w-6 h-6 text-gold ${isProcessing ? 'animate-pulse' : ''}`} />
             </div>
             <div className="text-center">
-              <p className="font-medium">Click to upload</p>
+              <p className="font-medium">{isProcessing ? 'Processing...' : 'Click to upload'}</p>
               <p className="text-sm text-muted-foreground">PNG, JPG, SVG (max 5MB)</p>
             </div>
           </button>
