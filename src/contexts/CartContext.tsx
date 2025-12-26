@@ -12,6 +12,9 @@ export interface CartItem {
     text?: string;
     textColor?: string;
     logo?: string;
+    logoPosition?: { x: number; y: number };
+    logoScale?: number;
+    logoRotation?: number;
   };
 }
 
