@@ -1,9 +1,8 @@
-import { Suspense, useRef, useState } from "react";
+import { Suspense, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, Float, Text, Center } from "@react-three/drei";
 import { motion } from "framer-motion";
-import * as THREE from "three";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCart } from "@/contexts/CartContext";
 import { toast } from "sonner";
-import { ShoppingBag, RotateCcw, Type, Palette, Save } from "lucide-react";
+import { ShoppingBag, RotateCcw, Type, Palette, Save, Image } from "lucide-react";
+import { GarmentModel } from "@/components/designer/GarmentModel";
+import { ImageUploadPanel } from "@/components/designer/ImageUploadPanel";
 
 const colors = [
   { name: "Obsidian", hex: "#1a1a1a" },
@@ -30,136 +31,26 @@ const garmentTypes = [
   { id: "polo", name: "Polo", price: 119 },
 ];
 
-interface GarmentProps {
-  color: string;
+interface TextOverlayProps {
   text: string;
   textColor: string;
-  type: string;
 }
 
-const Garment = ({ color, text, textColor, type }: GarmentProps) => {
-
-  // Different geometry based on type
-  const renderGarment = () => {
-    const materialProps = {
-      color: color,
-      roughness: 0.8,
-      metalness: 0.1,
-    };
-
-    if (type === "hoodie") {
-      return (
-        <group>
-          {/* Body */}
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[2, 2.5, 0.8]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Hood */}
-          <mesh position={[0, 1.5, -0.2]}>
-            <sphereGeometry args={[0.6, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Sleeves */}
-          <mesh position={[-1.3, 0.3, 0]} rotation={[0, 0, -0.3]}>
-            <cylinderGeometry args={[0.3, 0.35, 1.5, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          <mesh position={[1.3, 0.3, 0]} rotation={[0, 0, 0.3]}>
-            <cylinderGeometry args={[0.3, 0.35, 1.5, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Pocket */}
-          <mesh position={[0, -0.5, 0.42]}>
-            <boxGeometry args={[1.2, 0.5, 0.05]} />
-            <meshStandardMaterial color="#000" opacity={0.3} transparent />
-          </mesh>
-        </group>
-      );
-    } else if (type === "polo") {
-      return (
-        <group>
-          {/* Body */}
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[2, 2.2, 0.6]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Collar */}
-          <mesh position={[0, 1.15, 0.1]}>
-            <boxGeometry args={[0.8, 0.3, 0.65]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Collar fold */}
-          <mesh position={[0, 1.3, 0.15]} rotation={[-0.3, 0, 0]}>
-            <boxGeometry args={[0.7, 0.15, 0.3]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Short sleeves */}
-          <mesh position={[-1.15, 0.5, 0]} rotation={[0, 0, -0.2]}>
-            <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          <mesh position={[1.15, 0.5, 0]} rotation={[0, 0, 0.2]}>
-            <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Buttons */}
-          {[0.8, 0.5, 0.2].map((y, i) => (
-            <mesh key={i} position={[0, y, 0.32]}>
-              <sphereGeometry args={[0.05, 8, 8]} />
-              <meshStandardMaterial color="#D4AF37" metalness={0.5} />
-            </mesh>
-          ))}
-        </group>
-      );
-    } else {
-      // T-Shirt
-      return (
-        <group>
-          {/* Body */}
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[2, 2.2, 0.6]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Neck */}
-          <mesh position={[0, 1.15, 0]}>
-            <torusGeometry args={[0.35, 0.1, 8, 16, Math.PI]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          {/* Short sleeves */}
-          <mesh position={[-1.15, 0.5, 0]} rotation={[0, 0, -0.2]}>
-            <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-          <mesh position={[1.15, 0.5, 0]} rotation={[0, 0, 0.2]}>
-            <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
-            <meshStandardMaterial {...materialProps} />
-          </mesh>
-        </group>
-      );
-    }
-  };
-
+const TextOverlay = ({ text, textColor }: TextOverlayProps) => {
+  if (!text) return null;
+  
   return (
-    <Float speed={1} rotationIntensity={0.2} floatIntensity={0.3}>
-      <group>
-        {renderGarment()}
-        {/* Custom Text */}
-        {text && (
-          <Center position={[0, 0, 0.45]}>
-            <Text
-              fontSize={0.25}
-              color={textColor}
-              anchorX="center"
-              anchorY="middle"
-              font="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
-            >
-              {text}
-            </Text>
-          </Center>
-        )}
-      </group>
-    </Float>
+    <Center position={[0, 0, 0.5]}>
+      <Text
+        fontSize={0.25}
+        color={textColor}
+        anchorX="center"
+        anchorY="middle"
+        font="https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff"
+      >
+        {text}
+      </Text>
+    </Center>
   );
 };
 
@@ -171,8 +62,41 @@ const Designer = () => {
   const [selectedSize, setSelectedSize] = useState("M");
   const { addItem } = useCart();
 
+  // Image upload state
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [decalSettings, setDecalSettings] = useState({
+    positionX: 0,
+    positionY: 0,
+    scale: 0.8,
+    rotation: 0,
+  });
+
   const currentGarment = garmentTypes.find((g) => g.id === selectedType)!;
   const currentColorName = colors.find((c) => c.hex === selectedColor)?.name || "Custom";
+
+  const handleSettingsChange = (newSettings: Partial<typeof decalSettings>) => {
+    setDecalSettings((prev) => ({ ...prev, ...newSettings }));
+  };
+
+  const handleImageRemove = () => {
+    setUploadedImage(null);
+    setDecalSettings({
+      positionX: 0,
+      positionY: 0,
+      scale: 0.8,
+      rotation: 0,
+    });
+  };
+
+  // Build decal config for 3D model
+  const decalConfig = uploadedImage
+    ? {
+        imageUrl: uploadedImage,
+        position: { x: decalSettings.positionX, y: decalSettings.positionY },
+        scale: decalSettings.scale,
+        rotation: decalSettings.rotation,
+      }
+    : null;
 
   const handleAddToCart = () => {
     addItem({
@@ -186,6 +110,12 @@ const Designer = () => {
       customization: {
         text: customText,
         textColor: textColor,
+        logo: uploadedImage || undefined,
+        logoPosition: uploadedImage
+          ? { x: decalSettings.positionX, y: decalSettings.positionY }
+          : undefined,
+        logoScale: uploadedImage ? decalSettings.scale : undefined,
+        logoRotation: uploadedImage ? decalSettings.rotation : undefined,
       },
     });
     toast.success("Added to cart!", {
@@ -231,12 +161,16 @@ const Designer = () => {
                   <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
                   <pointLight position={[-10, -10, -10]} />
                   <Suspense fallback={null}>
-                    <Garment
-                      color={selectedColor}
-                      text={customText}
-                      textColor={textColor}
-                      type={selectedType}
-                    />
+                    <Float speed={1} rotationIntensity={0.2} floatIntensity={0.3}>
+                      <group>
+                        <GarmentModel
+                          color={selectedColor}
+                          type={selectedType}
+                          decal={decalConfig}
+                        />
+                        <TextOverlay text={customText} textColor={textColor} />
+                      </group>
+                    </Float>
                     <Environment preset="studio" />
                   </Suspense>
                   <OrbitControls
@@ -263,7 +197,7 @@ const Designer = () => {
                 className="space-y-8"
               >
                 <Tabs defaultValue="type" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 bg-secondary">
+                  <TabsList className="grid w-full grid-cols-4 bg-secondary">
                     <TabsTrigger value="type">Type</TabsTrigger>
                     <TabsTrigger value="color">
                       <Palette className="w-4 h-4 mr-2" />
@@ -272,6 +206,10 @@ const Designer = () => {
                     <TabsTrigger value="text">
                       <Type className="w-4 h-4 mr-2" />
                       Text
+                    </TabsTrigger>
+                    <TabsTrigger value="image">
+                      <Image className="w-4 h-4 mr-2" />
+                      Image
                     </TabsTrigger>
                   </TabsList>
 
@@ -352,6 +290,16 @@ const Designer = () => {
                       </div>
                     </div>
                   </TabsContent>
+
+                  <TabsContent value="image" className="mt-6">
+                    <ImageUploadPanel
+                      uploadedImage={uploadedImage}
+                      onImageUpload={setUploadedImage}
+                      onImageRemove={handleImageRemove}
+                      decalSettings={decalSettings}
+                      onSettingsChange={handleSettingsChange}
+                    />
+                  </TabsContent>
                 </Tabs>
 
                 {/* Size Selection */}
@@ -400,6 +348,12 @@ const Designer = () => {
                       <span className="font-semibold">"{customText}"</span>
                     </div>
                   )}
+                  {uploadedImage && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Custom Image</span>
+                      <span className="font-semibold text-gold">Added ✓</span>
+                    </div>
+                  )}
                   <div className="pt-4 border-t border-border">
                     <div className="flex justify-between items-center">
                       <span className="text-lg">Total</span>
@@ -412,11 +366,11 @@ const Designer = () => {
 
                 {/* Actions */}
                 <div className="flex gap-4">
-                  <Button variant="gold-outline" size="lg" className="flex-1">
+                  <Button variant="outline" size="lg" className="flex-1">
                     <Save className="w-5 h-5 mr-2" />
                     Save Design
                   </Button>
-                  <Button variant="gold" size="lg" className="flex-1" onClick={handleAddToCart}>
+                  <Button variant="default" size="lg" className="flex-1 bg-gold hover:bg-gold/90 text-primary-foreground" onClick={handleAddToCart}>
                     <ShoppingBag className="w-5 h-5 mr-2" />
                     Add to Cart
                   </Button>
