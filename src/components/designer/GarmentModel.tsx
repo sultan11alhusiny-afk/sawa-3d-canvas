@@ -1,5 +1,6 @@
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useState } from "react";
 import { useTexture, Decal } from "@react-three/drei";
+import { ThreeEvent, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
 interface DecalConfig {
@@ -13,10 +14,20 @@ interface GarmentModelProps {
   color: string;
   type: string;
   decal?: DecalConfig | null;
+  onDecalDrag?: (x: number, y: number) => void;
+  isDraggable?: boolean;
 }
 
-export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
+export const GarmentModel = ({ 
+  color, 
+  type, 
+  decal, 
+  onDecalDrag,
+  isDraggable = false 
+}: GarmentModelProps) => {
   const meshRef = useRef<THREE.Mesh>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const { camera } = useThree();
 
   // Load decal texture if provided
   const decalTexture = useTexture(decal?.imageUrl || "/placeholder.svg");
@@ -33,7 +44,6 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
   // Calculate decal position based on garment type and user settings
   const decalPosition = useMemo(() => {
     if (!decal) return new THREE.Vector3(0, 0, 0.45);
-    // Map from -1 to 1 range to actual garment surface positions
     const x = decal.position.x * 0.6;
     const y = decal.position.y * 0.8;
     return new THREE.Vector3(x, y, 0.45);
@@ -50,11 +60,59 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
     return new THREE.Vector3(s, s, 1);
   }, [decal]);
 
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDraggable || !decal?.imageUrl) return;
+    e.stopPropagation();
+    setIsDragging(true);
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+
+  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    setIsDragging(false);
+    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+  };
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging || !onDecalDrag || !meshRef.current) return;
+    e.stopPropagation();
+
+    // Get intersection point on the mesh
+    const intersects = e.intersections.filter(
+      (i) => i.object === meshRef.current
+    );
+    
+    if (intersects.length > 0) {
+      const point = intersects[0].point;
+      // Convert 3D point to normalized position (-1 to 1)
+      const newX = Math.max(-1, Math.min(1, point.x / 0.6));
+      const newY = Math.max(-1, Math.min(1, point.y / 0.8));
+      onDecalDrag(newX, newY);
+    }
+  };
+
+  const interactionProps = isDraggable && decal?.imageUrl ? {
+    onPointerDown: handlePointerDown,
+    onPointerUp: handlePointerUp,
+    onPointerMove: handlePointerMove,
+    onPointerLeave: handlePointerUp,
+  } : {};
+
+  const cursorStyle = isDraggable && decal?.imageUrl 
+    ? (isDragging ? "grabbing" : "grab") 
+    : "auto";
+
   if (type === "hoodie") {
     return (
       <group>
-        {/* Body - main mesh for decal */}
-        <mesh ref={meshRef} position={[0, 0, 0]}>
+        <mesh 
+          ref={meshRef} 
+          position={[0, 0, 0]}
+          {...interactionProps}
+          onPointerOver={() => isDraggable && decal?.imageUrl && (document.body.style.cursor = "grab")}
+          onPointerOut={() => (document.body.style.cursor = "auto")}
+        >
           <boxGeometry args={[2, 2.5, 0.8]} />
           <meshStandardMaterial {...materialProps} />
           {decal?.imageUrl && (
@@ -67,12 +125,10 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
             />
           )}
         </mesh>
-        {/* Hood */}
         <mesh position={[0, 1.5, -0.2]}>
           <sphereGeometry args={[0.6, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
           <meshStandardMaterial {...materialProps} />
         </mesh>
-        {/* Sleeves */}
         <mesh position={[-1.3, 0.3, 0]} rotation={[0, 0, -0.3]}>
           <cylinderGeometry args={[0.3, 0.35, 1.5, 16]} />
           <meshStandardMaterial {...materialProps} />
@@ -81,7 +137,6 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
           <cylinderGeometry args={[0.3, 0.35, 1.5, 16]} />
           <meshStandardMaterial {...materialProps} />
         </mesh>
-        {/* Pocket */}
         <mesh position={[0, -0.5, 0.42]}>
           <boxGeometry args={[1.2, 0.5, 0.05]} />
           <meshStandardMaterial color="#000" opacity={0.3} transparent />
@@ -93,8 +148,13 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
   if (type === "polo") {
     return (
       <group>
-        {/* Body */}
-        <mesh ref={meshRef} position={[0, 0, 0]}>
+        <mesh 
+          ref={meshRef} 
+          position={[0, 0, 0]}
+          {...interactionProps}
+          onPointerOver={() => isDraggable && decal?.imageUrl && (document.body.style.cursor = "grab")}
+          onPointerOut={() => (document.body.style.cursor = "auto")}
+        >
           <boxGeometry args={[2, 2.2, 0.6]} />
           <meshStandardMaterial {...materialProps} />
           {decal?.imageUrl && (
@@ -107,17 +167,14 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
             />
           )}
         </mesh>
-        {/* Collar */}
         <mesh position={[0, 1.15, 0.1]}>
           <boxGeometry args={[0.8, 0.3, 0.65]} />
           <meshStandardMaterial {...materialProps} />
         </mesh>
-        {/* Collar fold */}
         <mesh position={[0, 1.3, 0.15]} rotation={[-0.3, 0, 0]}>
           <boxGeometry args={[0.7, 0.15, 0.3]} />
           <meshStandardMaterial {...materialProps} />
         </mesh>
-        {/* Short sleeves */}
         <mesh position={[-1.15, 0.5, 0]} rotation={[0, 0, -0.2]}>
           <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
           <meshStandardMaterial {...materialProps} />
@@ -126,7 +183,6 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
           <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
           <meshStandardMaterial {...materialProps} />
         </mesh>
-        {/* Buttons */}
         {[0.8, 0.5, 0.2].map((y, i) => (
           <mesh key={i} position={[0, y, 0.32]}>
             <sphereGeometry args={[0.05, 8, 8]} />
@@ -140,8 +196,13 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
   // T-Shirt (default)
   return (
     <group>
-      {/* Body */}
-      <mesh ref={meshRef} position={[0, 0, 0]}>
+      <mesh 
+        ref={meshRef} 
+        position={[0, 0, 0]}
+        {...interactionProps}
+        onPointerOver={() => isDraggable && decal?.imageUrl && (document.body.style.cursor = "grab")}
+        onPointerOut={() => (document.body.style.cursor = "auto")}
+      >
         <boxGeometry args={[2, 2.2, 0.6]} />
         <meshStandardMaterial {...materialProps} />
         {decal?.imageUrl && (
@@ -154,12 +215,10 @@ export const GarmentModel = ({ color, type, decal }: GarmentModelProps) => {
           />
         )}
       </mesh>
-      {/* Neck */}
       <mesh position={[0, 1.15, 0]}>
         <torusGeometry args={[0.35, 0.1, 8, 16, Math.PI]} />
         <meshStandardMaterial {...materialProps} />
       </mesh>
-      {/* Short sleeves */}
       <mesh position={[-1.15, 0.5, 0]} rotation={[0, 0, -0.2]}>
         <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
         <meshStandardMaterial {...materialProps} />

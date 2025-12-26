@@ -60,6 +60,7 @@ const Designer = () => {
   const [customText, setCustomText] = useState("");
   const [textColor, setTextColor] = useState("#D4AF37");
   const [selectedSize, setSelectedSize] = useState("M");
+  const [activeTab, setActiveTab] = useState("type");
   const { addItem } = useCart();
 
   // Image upload state
@@ -70,6 +71,9 @@ const Designer = () => {
     scale: 0.8,
     rotation: 0,
   });
+
+  // Check if we're in image editing mode for drag-and-drop
+  const isDraggable = activeTab === "image" && !!uploadedImage;
 
   const currentGarment = garmentTypes.find((g) => g.id === selectedType)!;
   const currentColorName = colors.find((c) => c.hex === selectedColor)?.name || "Custom";
@@ -86,6 +90,11 @@ const Designer = () => {
       scale: 0.8,
       rotation: 0,
     });
+  };
+
+  // Handler for 3D drag
+  const handleDecalDrag = (x: number, y: number) => {
+    setDecalSettings((prev) => ({ ...prev, positionX: x, positionY: y }));
   };
 
   // Build decal config for 3D model
@@ -161,12 +170,14 @@ const Designer = () => {
                   <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
                   <pointLight position={[-10, -10, -10]} />
                   <Suspense fallback={null}>
-                    <Float speed={1} rotationIntensity={0.2} floatIntensity={0.3}>
+                    <Float speed={isDraggable ? 0 : 1} rotationIntensity={isDraggable ? 0 : 0.2} floatIntensity={isDraggable ? 0 : 0.3}>
                       <group>
                         <GarmentModel
                           color={selectedColor}
                           type={selectedType}
                           decal={decalConfig}
+                          isDraggable={isDraggable}
+                          onDecalDrag={handleDecalDrag}
                         />
                         <TextOverlay text={customText} textColor={textColor} />
                       </group>
@@ -177,16 +188,22 @@ const Designer = () => {
                     enablePan={false}
                     minDistance={3}
                     maxDistance={8}
-                    autoRotate
+                    autoRotate={!isDraggable}
                     autoRotateSpeed={0.5}
+                    enabled={!isDraggable}
                   />
                 </Canvas>
 
                 {/* Controls Overlay */}
                 <div className="absolute bottom-4 left-4 flex items-center gap-2 text-sm text-muted-foreground">
                   <RotateCcw className="w-4 h-4" />
-                  Drag to rotate • Scroll to zoom
+                  {isDraggable ? "Drag on garment to position image" : "Drag to rotate • Scroll to zoom"}
                 </div>
+                {isDraggable && (
+                  <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-gold/90 text-primary-foreground text-sm font-medium">
+                    Drag Mode Active
+                  </div>
+                )}
               </motion.div>
 
               {/* Customization Panel */}
@@ -196,7 +213,7 @@ const Designer = () => {
                 transition={{ delay: 0.3 }}
                 className="space-y-8"
               >
-                <Tabs defaultValue="type" className="w-full">
+                <Tabs defaultValue="type" value={activeTab} onValueChange={setActiveTab} className="w-full">
                   <TabsList className="grid w-full grid-cols-4 bg-secondary">
                     <TabsTrigger value="type">Type</TabsTrigger>
                     <TabsTrigger value="color">
