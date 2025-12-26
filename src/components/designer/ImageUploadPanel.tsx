@@ -1,8 +1,8 @@
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Move, RotateCw, Maximize2 } from "lucide-react";
+import { Upload, X, RotateCw, Maximize2, Move, Target } from "lucide-react";
 
 interface DecalSettings {
   positionX: number;
@@ -27,33 +27,77 @@ export const ImageUploadPanel = ({
   onSettingsChange,
 }: ImageUploadPanelProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const positionGridRef = useRef<HTMLDivElement>(null);
+  const [isDraggingOnGrid, setIsDraggingOnGrid] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     const validTypes = ["image/png", "image/jpeg", "image/jpg", "image/svg+xml"];
     if (!validTypes.includes(file.type)) {
       alert("Please upload a PNG, JPG, or SVG file.");
       return;
     }
 
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       alert("File size must be less than 5MB.");
       return;
     }
 
-    // Create object URL for preview
     const imageUrl = URL.createObjectURL(file);
     onImageUpload(imageUrl);
 
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
+
+  const handleGridInteraction = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!positionGridRef.current) return;
+
+      const rect = positionGridRef.current.getBoundingClientRect();
+      const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -(((clientY - rect.top) / rect.height) * 2 - 1);
+
+      onSettingsChange({
+        positionX: Math.max(-1, Math.min(1, x)),
+        positionY: Math.max(-1, Math.min(1, y)),
+      });
+    },
+    [onSettingsChange]
+  );
+
+  const handleGridMouseDown = (e: React.MouseEvent) => {
+    setIsDraggingOnGrid(true);
+    handleGridInteraction(e.clientX, e.clientY);
+  };
+
+  const handleGridMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingOnGrid) return;
+    handleGridInteraction(e.clientX, e.clientY);
+  };
+
+  const handleGridMouseUp = () => {
+    setIsDraggingOnGrid(false);
+  };
+
+  const handleGridTouchStart = (e: React.TouchEvent) => {
+    setIsDraggingOnGrid(true);
+    const touch = e.touches[0];
+    handleGridInteraction(touch.clientX, touch.clientY);
+  };
+
+  const handleGridTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingOnGrid) return;
+    const touch = e.touches[0];
+    handleGridInteraction(touch.clientX, touch.clientY);
+  };
+
+  // Convert -1 to 1 range to percentage for positioning
+  const markerLeft = ((decalSettings.positionX + 1) / 2) * 100;
+  const markerTop = ((-decalSettings.positionY + 1) / 2) * 100;
 
   return (
     <div className="space-y-6">
@@ -105,36 +149,93 @@ export const ImageUploadPanel = ({
       {/* Controls (only show when image is uploaded) */}
       {uploadedImage && (
         <div className="space-y-5 pt-2">
-          {/* Position X */}
+          {/* Interactive Position Grid */}
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Move className="w-4 h-4 text-gold" />
-              <Label className="text-sm">Horizontal Position</Label>
+              <Target className="w-4 h-4 text-gold" />
+              <Label className="text-sm">Position (drag to move)</Label>
             </div>
-            <Slider
-              value={[decalSettings.positionX]}
-              onValueChange={([value]) => onSettingsChange({ positionX: value })}
-              min={-1}
-              max={1}
-              step={0.05}
-              className="w-full"
-            />
+            <div
+              ref={positionGridRef}
+              className="relative aspect-square w-full max-w-[200px] mx-auto rounded-xl border-2 border-border bg-secondary/50 cursor-crosshair select-none overflow-hidden"
+              onMouseDown={handleGridMouseDown}
+              onMouseMove={handleGridMouseMove}
+              onMouseUp={handleGridMouseUp}
+              onMouseLeave={handleGridMouseUp}
+              onTouchStart={handleGridTouchStart}
+              onTouchMove={handleGridTouchMove}
+              onTouchEnd={handleGridMouseUp}
+            >
+              {/* Grid lines */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="absolute w-full h-px bg-border/50" />
+                <div className="absolute h-full w-px bg-border/50" />
+              </div>
+              
+              {/* Garment outline hint */}
+              <div className="absolute inset-4 border border-dashed border-muted-foreground/30 rounded-lg pointer-events-none" />
+              
+              {/* Position marker */}
+              <div
+                className="absolute w-6 h-6 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{
+                  left: `${markerLeft}%`,
+                  top: `${markerTop}%`,
+                }}
+              >
+                <div className="w-full h-full rounded-full bg-gold border-2 border-background shadow-lg flex items-center justify-center">
+                  <Move className="w-3 h-3 text-primary-foreground" />
+                </div>
+              </div>
+              
+              {/* Image preview at position */}
+              <div
+                className="absolute w-12 h-12 -translate-x-1/2 -translate-y-1/2 pointer-events-none opacity-60"
+                style={{
+                  left: `${markerLeft}%`,
+                  top: `${markerTop}%`,
+                  transform: `translate(-50%, -50%) rotate(${decalSettings.rotation}deg) scale(${decalSettings.scale})`,
+                }}
+              >
+                <img
+                  src={uploadedImage}
+                  alt=""
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              Click and drag to position • Also drag on the 3D model
+            </p>
           </div>
 
-          {/* Position Y */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Move className="w-4 h-4 text-gold rotate-90" />
-              <Label className="text-sm">Vertical Position</Label>
+          {/* Fine-tune sliders */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Position X */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Horizontal</Label>
+              <Slider
+                value={[decalSettings.positionX]}
+                onValueChange={([value]) => onSettingsChange({ positionX: value })}
+                min={-1}
+                max={1}
+                step={0.05}
+                className="w-full"
+              />
             </div>
-            <Slider
-              value={[decalSettings.positionY]}
-              onValueChange={([value]) => onSettingsChange({ positionY: value })}
-              min={-1}
-              max={1}
-              step={0.05}
-              className="w-full"
-            />
+
+            {/* Position Y */}
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Vertical</Label>
+              <Slider
+                value={[decalSettings.positionY]}
+                onValueChange={([value]) => onSettingsChange({ positionY: value })}
+                min={-1}
+                max={1}
+                step={0.05}
+                className="w-full"
+              />
+            </div>
           </div>
 
           {/* Scale */}
