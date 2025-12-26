@@ -15,6 +15,14 @@ export interface CartItem {
     logoPosition?: { x: number; y: number };
     logoScale?: number;
     logoRotation?: number;
+    zones?: Record<string, {
+      logo: string;
+      position: { x: number; y: number };
+      scale: number;
+      rotation: number;
+      flipX: boolean;
+      flipY: boolean;
+    }>;
   };
 }
 
