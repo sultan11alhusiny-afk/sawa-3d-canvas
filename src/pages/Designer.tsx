@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useState, useCallback } from "react";
 import { Helmet } from "react-helmet-async";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Environment, Float, Text, Center } from "@react-three/drei";
@@ -11,8 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCart } from "@/contexts/CartContext";
 import { toast } from "sonner";
 import { ShoppingBag, RotateCcw, Type, Palette, Save, Image } from "lucide-react";
-import { GarmentModel } from "@/components/designer/GarmentModel";
-import { ImageUploadPanel } from "@/components/designer/ImageUploadPanel";
+import { MultiZoneGarmentModel } from "@/components/designer/MultiZoneGarmentModel";
+import { ZoneSelector } from "@/components/designer/ZoneSelector";
+import { ZoneImagePanel } from "@/components/designer/ZoneImagePanel";
+import { CameraController } from "@/components/designer/CameraController";
+import { 
+  DesignZone, 
+  ZoneDecals, 
+  DecalSettings, 
+  createDefaultZoneDecals,
+  ZONE_CONFIG 
+} from "@/types/designer";
 
 const colors = [
   { name: "Obsidian", hex: "#1a1a1a" },
@@ -40,9 +49,9 @@ const TextOverlay = ({ text, textColor }: TextOverlayProps) => {
   if (!text) return null;
   
   return (
-    <Center position={[0, 0, 0.5]}>
+    <Center position={[0, 0, 0.4]}>
       <Text
-        fontSize={0.25}
+        fontSize={0.2}
         color={textColor}
         anchorX="center"
         anchorY="middle"
@@ -63,51 +72,77 @@ const Designer = () => {
   const [activeTab, setActiveTab] = useState("type");
   const { addItem } = useCart();
 
-  // Image upload state
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [decalSettings, setDecalSettings] = useState({
-    positionX: 0,
-    positionY: 0,
-    scale: 0.8,
-    rotation: 0,
-  });
+  // Multi-zone state
+  const [activeZone, setActiveZone] = useState<DesignZone>("front");
+  const [zoneDecals, setZoneDecals] = useState<ZoneDecals>(createDefaultZoneDecals);
+  const [isCameraAnimating, setIsCameraAnimating] = useState(false);
 
-  // Check if we're in image editing mode for drag-and-drop
-  const isDraggable = activeTab === "image" && !!uploadedImage;
+  // Check if we're in image editing mode
+  const isDraggable = activeTab === "image" && !!zoneDecals[activeZone].imageUrl;
 
   const currentGarment = garmentTypes.find((g) => g.id === selectedType)!;
   const currentColorName = colors.find((c) => c.hex === selectedColor)?.name || "Custom";
 
-  const handleSettingsChange = (newSettings: Partial<typeof decalSettings>) => {
-    setDecalSettings((prev) => ({ ...prev, ...newSettings }));
-  };
+  // Zone change handler with camera animation
+  const handleZoneChange = useCallback((zone: DesignZone) => {
+    setActiveZone(zone);
+    setIsCameraAnimating(true);
+  }, []);
 
-  const handleImageRemove = () => {
-    setUploadedImage(null);
-    setDecalSettings({
-      positionX: 0,
-      positionY: 0,
-      scale: 0.8,
-      rotation: 0,
-    });
-  };
+  // Image upload handler for specific zone
+  const handleZoneImageUpload = useCallback((zone: DesignZone, imageUrl: string) => {
+    setZoneDecals(prev => ({
+      ...prev,
+      [zone]: { ...prev[zone], imageUrl }
+    }));
+  }, []);
 
-  // Handler for 3D drag
-  const handleDecalDrag = (x: number, y: number) => {
-    setDecalSettings((prev) => ({ ...prev, positionX: x, positionY: y }));
-  };
-
-  // Build decal config for 3D model
-  const decalConfig = uploadedImage
-    ? {
-        imageUrl: uploadedImage,
-        position: { x: decalSettings.positionX, y: decalSettings.positionY },
-        scale: decalSettings.scale,
-        rotation: decalSettings.rotation,
+  // Image remove handler for specific zone
+  const handleZoneImageRemove = useCallback((zone: DesignZone) => {
+    setZoneDecals(prev => ({
+      ...prev,
+      [zone]: { 
+        imageUrl: null, 
+        settings: { positionX: 0, positionY: 0, scale: 0.8, rotation: 0, flipX: false, flipY: false }
       }
-    : null;
+    }));
+  }, []);
+
+  // Settings change handler for specific zone
+  const handleZoneSettingsChange = useCallback((zone: DesignZone, newSettings: Partial<DecalSettings>) => {
+    setZoneDecals(prev => ({
+      ...prev,
+      [zone]: { 
+        ...prev[zone], 
+        settings: { ...prev[zone].settings, ...newSettings }
+      }
+    }));
+  }, []);
+
+  // 3D drag handler
+  const handleDecalDrag = useCallback((zone: DesignZone, x: number, y: number) => {
+    handleZoneSettingsChange(zone, { positionX: x, positionY: y });
+  }, [handleZoneSettingsChange]);
+
+  // Count zones with designs
+  const zonesWithDesigns = Object.values(zoneDecals).filter(z => z.imageUrl).length;
 
   const handleAddToCart = () => {
+    // Build customization object with all zone data
+    const zoneCustomizations = Object.entries(zoneDecals)
+      .filter(([_, data]) => data.imageUrl)
+      .reduce((acc, [zone, data]) => ({
+        ...acc,
+        [zone]: {
+          logo: data.imageUrl,
+          position: { x: data.settings.positionX, y: data.settings.positionY },
+          scale: data.settings.scale,
+          rotation: data.settings.rotation,
+          flipX: data.settings.flipX,
+          flipY: data.settings.flipY,
+        }
+      }), {});
+
     addItem({
       id: `custom-${selectedType}-${Date.now()}`,
       name: `Custom ${currentGarment.name}`,
@@ -119,16 +154,11 @@ const Designer = () => {
       customization: {
         text: customText,
         textColor: textColor,
-        logo: uploadedImage || undefined,
-        logoPosition: uploadedImage
-          ? { x: decalSettings.positionX, y: decalSettings.positionY }
-          : undefined,
-        logoScale: uploadedImage ? decalSettings.scale : undefined,
-        logoRotation: uploadedImage ? decalSettings.rotation : undefined,
+        zones: zoneCustomizations,
       },
     });
     toast.success("Added to cart!", {
-      description: "Your custom design has been saved.",
+      description: `Your custom design with ${zonesWithDesigns} zone(s) has been saved.`,
     });
   };
 
@@ -155,6 +185,7 @@ const Designer = () => {
               <h1 className="text-5xl md:text-6xl font-display font-bold mt-2">
                 Design Your <span className="text-gradient-gold">Style</span>
               </h1>
+              <p className="text-muted-foreground mt-3">Front, Back & Sleeves - Full Creative Control</p>
             </motion.div>
 
             <div className="grid lg:grid-cols-2 gap-12">
@@ -170,12 +201,22 @@ const Designer = () => {
                   <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
                   <pointLight position={[-10, -10, -10]} />
                   <Suspense fallback={null}>
-                    <Float speed={isDraggable ? 0 : 1} rotationIntensity={isDraggable ? 0 : 0.2} floatIntensity={isDraggable ? 0 : 0.3}>
+                    <CameraController 
+                      targetZone={activeZone}
+                      isAnimating={isCameraAnimating}
+                      onAnimationComplete={() => setIsCameraAnimating(false)}
+                    />
+                    <Float 
+                      speed={isDraggable || isCameraAnimating ? 0 : 1} 
+                      rotationIntensity={isDraggable || isCameraAnimating ? 0 : 0.1} 
+                      floatIntensity={isDraggable || isCameraAnimating ? 0 : 0.2}
+                    >
                       <group>
-                        <GarmentModel
+                        <MultiZoneGarmentModel
                           color={selectedColor}
                           type={selectedType}
-                          decal={decalConfig}
+                          zoneDecals={zoneDecals}
+                          activeZone={activeZone}
                           isDraggable={isDraggable}
                           onDecalDrag={handleDecalDrag}
                         />
@@ -188,9 +229,9 @@ const Designer = () => {
                     enablePan={false}
                     minDistance={3}
                     maxDistance={8}
-                    autoRotate={!isDraggable}
+                    autoRotate={!isDraggable && !isCameraAnimating && activeTab !== "image"}
                     autoRotateSpeed={0.5}
-                    enabled={!isDraggable}
+                    enabled={!isDraggable && !isCameraAnimating}
                   />
                 </Canvas>
 
@@ -199,8 +240,14 @@ const Designer = () => {
                   <RotateCcw className="w-4 h-4" />
                   {isDraggable ? "Drag on garment to position image" : "Drag to rotate • Scroll to zoom"}
                 </div>
+                
+                {/* Zone indicator */}
+                <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-secondary/90 text-sm font-medium border border-border">
+                  Viewing: <span className="text-gold">{ZONE_CONFIG.find(z => z.id === activeZone)?.label}</span>
+                </div>
+                
                 {isDraggable && (
-                  <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-gold/90 text-primary-foreground text-sm font-medium">
+                  <div className="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-gold/90 text-primary-foreground text-sm font-medium">
                     Drag Mode Active
                   </div>
                 )}
@@ -211,7 +258,7 @@ const Designer = () => {
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.3 }}
-                className="space-y-8"
+                className="space-y-6"
               >
                 <Tabs defaultValue="type" value={activeTab} onValueChange={setActiveTab} className="w-full">
                   <TabsList className="grid w-full grid-cols-4 bg-secondary">
@@ -308,13 +355,22 @@ const Designer = () => {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="image" className="mt-6">
-                    <ImageUploadPanel
-                      uploadedImage={uploadedImage}
-                      onImageUpload={setUploadedImage}
-                      onImageRemove={handleImageRemove}
-                      decalSettings={decalSettings}
-                      onSettingsChange={handleSettingsChange}
+                  <TabsContent value="image" className="mt-6 space-y-6">
+                    {/* Zone Selector */}
+                    <ZoneSelector 
+                      selectedZone={activeZone}
+                      onZoneChange={handleZoneChange}
+                      zoneDecals={zoneDecals}
+                    />
+                    
+                    {/* Zone-specific Image Panel */}
+                    <ZoneImagePanel
+                      activeZone={activeZone}
+                      imageUrl={zoneDecals[activeZone].imageUrl}
+                      settings={zoneDecals[activeZone].settings}
+                      onImageUpload={handleZoneImageUpload}
+                      onImageRemove={handleZoneImageRemove}
+                      onSettingsChange={handleZoneSettingsChange}
                     />
                   </TabsContent>
                 </Tabs>
@@ -365,10 +421,10 @@ const Designer = () => {
                       <span className="font-semibold">"{customText}"</span>
                     </div>
                   )}
-                  {uploadedImage && (
+                  {zonesWithDesigns > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Custom Image</span>
-                      <span className="font-semibold text-gold">Added ✓</span>
+                      <span className="text-muted-foreground">Custom Designs</span>
+                      <span className="font-semibold text-gold">{zonesWithDesigns} zone(s) ✓</span>
                     </div>
                   )}
                   <div className="pt-4 border-t border-border">
