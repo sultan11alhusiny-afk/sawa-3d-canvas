@@ -194,7 +194,7 @@ const Designer = () => {
                 initial={{ opacity: 0, x: -30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
-                className="relative aspect-square rounded-2xl bg-card border border-border overflow-hidden"
+                className="relative aspect-square rounded-2xl bg-card border border-border overflow-hidden z-0"
               >
                 <Canvas camera={{ position: [0, 0, 5], fov: 50 }}>
                   <ambientLight intensity={0.5} />
@@ -236,18 +236,18 @@ const Designer = () => {
                 </Canvas>
 
                 {/* Controls Overlay */}
-                <div className="absolute bottom-4 left-4 flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="absolute bottom-4 left-4 flex items-center gap-2 text-sm text-muted-foreground z-10 pointer-events-none">
                   <RotateCcw className="w-4 h-4" />
                   {isDraggable ? "Drag on garment to position image" : "Drag to rotate • Scroll to zoom"}
                 </div>
                 
                 {/* Zone indicator */}
-                <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-secondary/90 text-sm font-medium border border-border">
+                <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-secondary/90 text-sm font-medium border border-border z-10 pointer-events-none">
                   Viewing: <span className="text-gold">{ZONE_CONFIG.find(z => z.id === activeZone)?.label}</span>
                 </div>
                 
                 {isDraggable && (
-                  <div className="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-gold/90 text-primary-foreground text-sm font-medium">
+                  <div className="absolute top-4 right-4 px-3 py-1.5 rounded-lg bg-gold/90 text-primary-foreground text-sm font-medium z-10 pointer-events-none">
                     Drag Mode Active
                   </div>
                 )}
