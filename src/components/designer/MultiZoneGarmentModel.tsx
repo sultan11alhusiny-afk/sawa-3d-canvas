@@ -7,8 +7,8 @@ import { DesignZone, ZoneDecals, DecalSettings } from "@/types/designer";
 // Preload the hoodie model for faster initial load
 useGLTF.preload("/models/hoodie.glb");
 
-// Target height in Three.js units for normalized clothing (approximately 2 units tall)
-const TARGET_MODEL_HEIGHT = 2.2;
+// Target height in Three.js units for normalized clothing
+const TARGET_MODEL_HEIGHT = 2.8;
 
 interface MultiZoneGarmentModelProps {
   color: string;
@@ -206,20 +206,20 @@ const GLBHoodieModel = ({
     const baseScale = modelBounds?.scale || 1;
     
     // Adjust for viewport (smaller screens get slightly smaller models)
-    const viewportFactor = Math.min(1, viewport.width / 6);
+    const viewportFactor = Math.max(0.8, Math.min(1.2, viewport.width / 5));
     
     return baseScale * viewportFactor;
   }, [modelBounds, viewport.width]);
 
-  // Center offset to position model at origin
+  // Center offset to position model at origin (centered vertically in view)
   const centerOffset = useMemo(() => {
     if (!modelBounds) return new THREE.Vector3(0, 0, 0);
     return new THREE.Vector3(
-      -modelBounds.center.x * modelBounds.scale,
-      -modelBounds.center.y * modelBounds.scale,
-      -modelBounds.center.z * modelBounds.scale
+      -modelBounds.center.x * responsiveScale,
+      -modelBounds.center.y * responsiveScale + 0.2,
+      -modelBounds.center.z * responsiveScale
     );
-  }, [modelBounds]);
+  }, [modelBounds, responsiveScale]);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!isDraggable || !zoneDecals[activeZone].imageUrl) return;
@@ -295,7 +295,7 @@ const GLBHoodieModel = ({
     <group 
       ref={groupRef}
       scale={[responsiveScale, responsiveScale, responsiveScale]}
-      position={[centerOffset.x, centerOffset.y - 0.3, centerOffset.z]}
+      position={[centerOffset.x, centerOffset.y, centerOffset.z]}
       {...interactionProps}
       onPointerOver={() => isDraggable && zoneDecals[activeZone].imageUrl && (document.body.style.cursor = "grab")}
       onPointerOut={() => (document.body.style.cursor = "auto")}
