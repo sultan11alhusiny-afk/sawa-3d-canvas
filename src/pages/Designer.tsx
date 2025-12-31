@@ -15,6 +15,7 @@ import { MultiZoneGarmentModel } from "@/components/designer/MultiZoneGarmentMod
 import { ZoneSelector } from "@/components/designer/ZoneSelector";
 import { ZoneImagePanel } from "@/components/designer/ZoneImagePanel";
 import { CameraController } from "@/components/designer/CameraController";
+import { AIPreviewModal } from "@/components/designer/AIPreviewModal";
 import { 
   DesignZone, 
   ZoneDecals, 
@@ -443,6 +444,14 @@ const Designer = () => {
                     <Save className="w-5 h-5 mr-2" />
                     Save Design
                   </Button>
+                  <AIPreviewModal
+                    garmentType={selectedType}
+                    garmentColor={selectedColor}
+                    customText={customText}
+                    zoneImages={Object.fromEntries(
+                      Object.entries(zoneDecals).map(([zone, data]) => [zone, data.imageUrl])
+                    )}
+                  />
                   <Button variant="default" size="lg" className="flex-1 bg-gold hover:bg-gold/90 text-primary-foreground" onClick={handleAddToCart}>
                     <ShoppingBag className="w-5 h-5 mr-2" />
                     Add to Cart
