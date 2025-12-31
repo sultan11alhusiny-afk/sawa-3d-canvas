@@ -64,63 +64,67 @@ const getDecalTransform = (
 ) => {
   const baseScale = settings.scale;
   
-  // Use model bounds for accurate positioning
-  const halfWidth = modelBounds.width * 0.25;
-  const halfHeight = modelBounds.height * 0.25;
-  const frontOffset = modelBounds.depth * 0.52;
-  const sleeveOffset = modelBounds.width * 0.4;
+  // Calculate zone-specific positions based on model dimensions
+  const halfWidth = modelBounds.width * 0.4;
+  const halfHeight = modelBounds.height * 0.35;
+  const frontOffset = modelBounds.depth * 0.51; // Slightly in front of mesh surface
+  const sleeveOffset = modelBounds.width * 0.52;
+  
+  // Position offsets from user input
+  const userOffsetX = settings.positionX * halfWidth * 0.5;
+  const userOffsetY = settings.positionY * halfHeight * 0.5;
   
   const zonePositions: Record<DesignZone, { position: THREE.Vector3; rotation: THREE.Euler; scale: THREE.Vector3 }> = {
     front: {
       position: new THREE.Vector3(
-        settings.positionX * halfWidth, 
-        settings.positionY * halfHeight + 0.15, 
+        userOffsetX, 
+        userOffsetY + 0.1, 
         frontOffset
       ),
       rotation: new THREE.Euler(0, 0, THREE.MathUtils.degToRad(settings.rotation)),
       scale: new THREE.Vector3(
-        baseScale * 0.7 * (settings.flipX ? -1 : 1), 
-        baseScale * 0.7 * (settings.flipY ? -1 : 1), 
-        1
+        baseScale * 0.6 * (settings.flipX ? -1 : 1), 
+        baseScale * 0.6 * (settings.flipY ? -1 : 1), 
+        0.1
       ),
     },
     back: {
       position: new THREE.Vector3(
-        settings.positionX * halfWidth, 
-        settings.positionY * halfHeight + 0.15, 
+        -userOffsetX, 
+        userOffsetY + 0.1, 
         -frontOffset
       ),
       rotation: new THREE.Euler(0, Math.PI, THREE.MathUtils.degToRad(-settings.rotation)),
       scale: new THREE.Vector3(
-        baseScale * 0.7 * (settings.flipX ? -1 : 1), 
-        baseScale * 0.7 * (settings.flipY ? -1 : 1), 
-        1
+        baseScale * 0.6 * (settings.flipX ? -1 : 1), 
+        baseScale * 0.6 * (settings.flipY ? -1 : 1), 
+        0.1
       ),
     },
     leftSleeve: {
       position: new THREE.Vector3(
         -sleeveOffset, 
-        0.35 + settings.positionY * 0.15, 
-        settings.positionX * 0.1
+        0.25 + userOffsetY * 0.3, 
+        userOffsetX * 0.2
       ),
       rotation: new THREE.Euler(0, -Math.PI / 2, THREE.MathUtils.degToRad(settings.rotation)),
       scale: new THREE.Vector3(
-        baseScale * 0.35 * (settings.flipX ? -1 : 1), 
-        baseScale * 0.35 * (settings.flipY ? -1 : 1), 
-        1
+        baseScale * 0.3 * (settings.flipX ? -1 : 1), 
+        baseScale * 0.3 * (settings.flipY ? -1 : 1), 
+        0.1
       ),
     },
     rightSleeve: {
       position: new THREE.Vector3(
         sleeveOffset, 
-        0.35 + settings.positionY * 0.15, 
-        settings.positionX * 0.1
+        0.25 + userOffsetY * 0.3, 
+        userOffsetX * 0.2
       ),
       rotation: new THREE.Euler(0, Math.PI / 2, THREE.MathUtils.degToRad(-settings.rotation)),
       scale: new THREE.Vector3(
-        baseScale * 0.35 * (settings.flipX ? -1 : 1), 
-        baseScale * 0.35 * (settings.flipY ? -1 : 1), 
-        1
+        baseScale * 0.3 * (settings.flipX ? -1 : 1), 
+        baseScale * 0.3 * (settings.flipY ? -1 : 1), 
+        0.1
       ),
     },
   };
@@ -128,9 +132,18 @@ const getDecalTransform = (
   return zonePositions[zone];
 };
 
-// Individual zone decal component
+// Individual zone decal component with proper texture settings
 const ZoneDecalMesh = ({ imageUrl, settings, zone, garmentType, modelBounds }: ZoneDecalProps) => {
   const texture = useTexture(imageUrl);
+  
+  // Configure texture for proper rendering
+  useEffect(() => {
+    texture.anisotropy = 16;
+    texture.minFilter = THREE.LinearMipMapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.needsUpdate = true;
+  }, [texture]);
+  
   const transform = useMemo(
     () => getDecalTransform(zone, settings, modelBounds),
     [zone, settings, modelBounds]
@@ -142,7 +155,7 @@ const ZoneDecalMesh = ({ imageUrl, settings, zone, garmentType, modelBounds }: Z
       rotation={transform.rotation}
       scale={transform.scale}
       map={texture}
-      polygonOffsetFactor={-1}
+      polygonOffsetFactor={-10}
     />
   );
 };
@@ -156,7 +169,7 @@ const GLBHoodieModel = ({
   isDraggable = false 
 }: Omit<MultiZoneGarmentModelProps, 'type'>) => {
   const groupRef = useRef<THREE.Group>(null);
-  const meshRef = useRef<THREE.Mesh>(null);
+  const mainMeshRef = useRef<THREE.Mesh | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [modelBounds, setModelBounds] = useState<ModelBounds | null>(null);
   
@@ -171,12 +184,35 @@ const GLBHoodieModel = ({
     const bounds = calculateModelBounds(clonedScene);
     setModelBounds(bounds);
     
-    // Log model info for debugging
+    // Find the main mesh (largest mesh in the model)
+    let largestMesh: THREE.Mesh | null = null;
+    let largestVolume = 0;
+    
+    clonedScene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry.computeBoundingBox();
+        const box = mesh.geometry.boundingBox;
+        if (box) {
+          const size = new THREE.Vector3();
+          box.getSize(size);
+          const volume = size.x * size.y * size.z;
+          if (volume > largestVolume) {
+            largestVolume = volume;
+            largestMesh = mesh;
+          }
+        }
+      }
+    });
+    
+    if (largestMesh) {
+      mainMeshRef.current = largestMesh;
+    }
+    
     console.log("Model bounds calculated:", {
       originalSize: `${(bounds.width / bounds.scale).toFixed(2)} x ${(bounds.height / bounds.scale).toFixed(2)} x ${(bounds.depth / bounds.scale).toFixed(2)}`,
       normalizedSize: `${bounds.width.toFixed(2)} x ${bounds.height.toFixed(2)} x ${bounds.depth.toFixed(2)}`,
       scale: bounds.scale.toFixed(3),
-      center: `(${bounds.center.x.toFixed(2)}, ${bounds.center.y.toFixed(2)}, ${bounds.center.z.toFixed(2)})`,
     });
   }, [clonedScene]);
   
@@ -185,14 +221,12 @@ const GLBHoodieModel = ({
     clonedScene.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        if (!meshRef.current) {
-          meshRef.current = mesh;
-        }
         if (mesh.material) {
           const newMaterial = new THREE.MeshStandardMaterial({
             color: new THREE.Color(color),
             roughness: 0.8,
             metalness: 0.1,
+            side: THREE.DoubleSide,
           });
           mesh.material = newMaterial;
         }
@@ -202,16 +236,12 @@ const GLBHoodieModel = ({
 
   // Responsive scale factor based on viewport
   const responsiveScale = useMemo(() => {
-    // Base scale from model normalization
     const baseScale = modelBounds?.scale || 1;
-    
-    // Adjust for viewport (smaller screens get slightly smaller models)
     const viewportFactor = Math.max(0.8, Math.min(1.2, viewport.width / 5));
-    
     return baseScale * viewportFactor;
   }, [modelBounds, viewport.width]);
 
-  // Center offset to position model at origin (centered vertically in view)
+  // Center offset to position model at origin
   const centerOffset = useMemo(() => {
     if (!modelBounds) return new THREE.Vector3(0, 0, 0);
     return new THREE.Vector3(
@@ -263,32 +293,8 @@ const GLBHoodieModel = ({
     onPointerLeave: handlePointerUp,
   } : {};
 
-  // Render all zone decals on the model
-  const renderDecals = () => {
-    if (!modelBounds) return null;
-    
-    return (Object.keys(zoneDecals) as DesignZone[]).map((zone) => {
-      const decal = zoneDecals[zone];
-      if (!decal.imageUrl) return null;
-      return (
-        <ZoneDecalMesh
-          key={zone}
-          imageUrl={decal.imageUrl}
-          settings={decal.settings}
-          zone={zone}
-          garmentType="hoodie"
-          modelBounds={{
-            width: modelBounds.width,
-            height: modelBounds.height,
-            depth: modelBounds.depth,
-          }}
-        />
-      );
-    });
-  };
-
   if (!modelBounds) {
-    return null; // Wait for bounds calculation
+    return null;
   }
 
   return (
@@ -301,13 +307,70 @@ const GLBHoodieModel = ({
       onPointerOut={() => (document.body.style.cursor = "auto")}
     >
       <primitive object={clonedScene} />
-      {/* Decal container mesh - positioned relative to normalized model */}
-      <mesh ref={meshRef} visible={true}>
-        <boxGeometry args={[modelBounds.width / responsiveScale * 0.5, modelBounds.height / responsiveScale * 0.8, modelBounds.depth / responsiveScale * 0.8]} />
-        <meshStandardMaterial transparent opacity={0} />
-        {renderDecals()}
-      </mesh>
+      {/* Decal projection mesh - matches model dimensions exactly */}
+      <DecalProjectionMesh
+        modelBounds={modelBounds}
+        responsiveScale={responsiveScale}
+        zoneDecals={zoneDecals}
+      />
     </group>
+  );
+};
+
+// Separate component for decal projection to ensure proper texture binding
+const DecalProjectionMesh = ({
+  modelBounds,
+  responsiveScale,
+  zoneDecals,
+}: {
+  modelBounds: ModelBounds;
+  responsiveScale: number;
+  zoneDecals: ZoneDecals;
+}) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  
+  // Create a properly sized mesh that wraps the garment
+  const meshDimensions = useMemo(() => ({
+    width: (modelBounds.width / responsiveScale) * 0.55,
+    height: (modelBounds.height / responsiveScale) * 0.85,
+    depth: (modelBounds.depth / responsiveScale) * 0.9,
+  }), [modelBounds, responsiveScale]);
+
+  // Render all zone decals on the projection mesh
+  const renderDecals = () => {
+    const projectionBounds = {
+      width: meshDimensions.width,
+      height: meshDimensions.height,
+      depth: meshDimensions.depth,
+    };
+
+    return (Object.keys(zoneDecals) as DesignZone[]).map((zone) => {
+      const decal = zoneDecals[zone];
+      if (!decal.imageUrl) return null;
+      return (
+        <ZoneDecalMesh
+          key={zone}
+          imageUrl={decal.imageUrl}
+          settings={decal.settings}
+          zone={zone}
+          garmentType="hoodie"
+          modelBounds={projectionBounds}
+        />
+      );
+    });
+  };
+
+  return (
+    <mesh ref={meshRef} position={[0, 0, 0]}>
+      <boxGeometry args={[meshDimensions.width, meshDimensions.height, meshDimensions.depth]} />
+      <meshStandardMaterial 
+        transparent 
+        opacity={0} 
+        depthWrite={false}
+        side={THREE.DoubleSide}
+      />
+      {renderDecals()}
+    </mesh>
   );
 };
 
